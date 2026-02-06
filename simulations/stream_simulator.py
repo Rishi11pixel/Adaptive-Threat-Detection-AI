@@ -23,10 +23,13 @@ y_stream = y_true.iloc[train_size:].reset_index(drop=True)
 # -------------------------------
 # Initialize and train pipeline
 # -------------------------------
-pipeline = AnomalyInferencePipeline()
+pipeline = AnomalyInferencePipeline(
+    window_size=3,        # short-term memory
+    alert_threshold=2     # require persistence
+)
 pipeline.fit(X_train)
 
-print("Starting sensor stream...\n")
+print("Starting sensor stream with temporal smoothing...\n")
 
 # -------------------------------
 # Simulated real-time stream
@@ -40,17 +43,24 @@ for i in range(0, len(X_stream), BATCH_SIZE):
     if batch.empty:
         continue
 
-    preds, votes = pipeline.predict(batch)
+    fused_preds, smoothed_alert = pipeline.predict(batch)
 
-    anomaly_count = int(preds.sum())
+    anomaly_count = int(fused_preds.sum())
 
+    # Raw anomaly info (for debugging / logs)
     if anomaly_count > 0:
         print(
-            f"[ALERT] Batch {i // BATCH_SIZE} | "
-            f"Anomalies: {anomaly_count} | "
-            f"Votes: {votes.tolist()}"
+            f"[RAW] Batch {i // BATCH_SIZE} | "
+            f"Detected anomalies: {anomaly_count}"
         )
     else:
-        print(f"[INFO] Batch {i // BATCH_SIZE} | Normal")
+        print(f"[RAW] Batch {i // BATCH_SIZE} | Normal")
+
+    # Operational alert (what robot / operator sees)
+    if smoothed_alert:
+        print(
+            f"[SMOOTHED ALERT] Batch {i // BATCH_SIZE} | "
+            f"Sustained anomalous behavior detected"
+        )
 
     time.sleep(0.5)  # simulate sensor delay
